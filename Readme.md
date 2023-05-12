@@ -409,3 +409,156 @@ php artisan db:seed
 `/users` にアクセスすると新たにダミーの10名分のユーザが登録されていることが確認できます。
 
 Laravel10 をインストール後はこのようにコントローラー、ルーティングを追加してアプリケーションを構築していきます。
+
+## データベース
+### テーブルの新規作成
+テーブルを新規で作成するには、マイグレーションファイルにテーブルカラム情報などを記述して
+コマンドで、マイグレーションファイルを元に、新規テーブルを作成して行きます。
+
+マイグレーションファイルとモデルファイルのテンプレートをコマンドで作成
+```bash
+php artisan make:model Post -m
+```
+作成して、マイグレーションファイルは、`database/migrations/****_create_post_table.php` となります。
+
+ファイルの中には、up メソッドと down メソッドが記述されています。
+
+up メソッドには、マイグレート実行に行う事を記述します。
+テーブル新規作成する場合には、テーブル内のカラム情報を設定していきます。
+
+down メソッドには、処理を取り消す時に行う事を記述します。
+
+マイグレーションファイルを作成した時は、以下の様になります。
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->id();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('posts');
+    }
+};
+
+```
+up メソッド内には id カラムと timestamps カラムの設定が最初から記述してます。
+
+timestamps カラムは created_at (作成日時) カラムと updated_at (編集日時) カラムを意味しています。
+
+テーブルにカラムを追加したい情報を、id と timestamp の間に記述していきます。
+
+カラムの設定方法
+`$table->データ型('カラム名')->カラム修飾子`
+
+まずは、カラムのデータ型について説明します。
+| マイグレーションファイルで記述する<br>データの型 | データベースで使用する<br>データ型 | 備考                     |
+| :----------------------------------------------- | :--------------------------------- | :----------------------- |
+| integer                                          | INTEGER                            | 整数                     |
+| string                                           | VARCHAR                            | 文字列(255文字程)        |
+| text                                             | TEXT                               | 長文文字列(16,384文字程) |
+| longText                                         | LONGTEXT                           | 大量の文字列(1GB程)      |
+| unsignedBigInteger<br>foreignId                  | 符号なし BIGINT                    | 他のテーブルのID         |
+| boolean                                          | BOOLEAN                            | true / false             |
+| date                                             | DATE                               | 日付                     |
+| dateTime                                         | DATETIME                           | 日時                     |
+
+次に、カラム修飾子について説明します。
+| 修飾子            | 使用時                                                    |
+| :---------------- | :-------------------------------------------------------- |
+| nullable()        | NULL 値を許容<br>入力されない可能性があるカラムに設定する |
+| after('カラム名') | 指定したカラムの後に設置する                              |
+| default('値')     | デフォルトで入れる値を設定する                            |
+| unique()          | カラムに重複した値を入れない様にする                      |
+
+早速、title カラムと body カラムを記述して行きます。
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+            $table->text('body');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('posts');
+    }
+};
+```
+マイグレートを実行して、posts テーブルを作成します。
+```bash
+php artisan migrate
+```
+
+### モデル
+前項でマイグレーションファイルとモデルファイルを `php artisan make:model Post -m` コマンドを使用して
+モデルファイルを作成してますので、マイグレーションファイルに記述した、`title` `body` カラム情報を、モデルファイルにも記述していきます。
+```bash
+vim app/Models/Post.php
+```
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'title',
+        'body',
+    ];
+}
+```
+`fillable` プロパティにカラム名を記述してます。
+一括で値を保存・更新したいカラムを設定します。
+
+fillable プロパティを使う理由は、セキュリティの為です。
+fillable で設定した値以外は、一括保存・更新処理から除外する様になってます。
+
+ただ fillable プロパティを使うと、カラム名を1つずつ設定するので、カラム名が多い場合は、
+`guarded` プロパティを使うといいでしょう。
+guarded プロパティは、一括保存・更新しないカラムを指定します。
+
+fillable はホワイトリスト、guardedはブラックリスト用に使うと覚えておくといいでしょう。
+
+
