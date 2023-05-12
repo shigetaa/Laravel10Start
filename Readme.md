@@ -410,7 +410,8 @@ php artisan db:seed
 
 Laravel10 をインストール後はこのようにコントローラー、ルーティングを追加してアプリケーションを構築していきます。
 
-## データベース
+## 投稿アプリ作成
+フォームを作成して、入力データのバリデーションをして、データーベースに保存、変更、削除、一覧表示、までのアプリを作成していきます。
 ### テーブルの新規作成
 テーブルを新規で作成するには、マイグレーションファイルにテーブルカラム情報などを記述して
 コマンドで、マイグレーションファイルを元に、新規テーブルを作成して行きます。
@@ -561,4 +562,64 @@ guarded プロパティは、一括保存・更新しないカラムを指定し
 
 fillable はホワイトリスト、guardedはブラックリスト用に使うと覚えておくといいでしょう。
 
+### 表示用ビューファイル作成
+`resources/views/post` に投稿用の post フォルダを作成します。
+`resources/views/post/create.blade.php` 投稿フォームのビューファイルを作成します。
+```bash
+mkdir resources/views/post
+vim resources/views/post/create.blade.php
+```
+```php
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            投稿フォーム
+        </h2>
+    </x-slot>
 
+    <div class="mt-8">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <form>
+            <div class="w-full flex flex-col">
+                <label for="title" class="font-semibold mt-4">件名</label>
+                <input type="text" name="title" class="w-auto py-2 border border-gray-300 rounded-md" id="title">
+            </div>
+            <div class="w-full flex flex-col">
+                <label for="title" class="font-semibold mt-4">本文</label>
+                <textarea name="body" id="body" cols="30" rows="50" class="w-auto py-2 border border-gray-300 rounded-md"></textarea>
+            </div>
+            <x-primary-button class="mt-4">送信する</x-primary-button>
+        </form>
+    </div>
+    </div>
+    
+</x-app-layout>
+```
+### コントローラー作成
+投稿アプリを制御するコントローラーを作成します。
+```bash
+php artisan make:controller PostController -m Post
+```
+ビューファイルのコードを記述
+```bash
+vim app/Http/Controllers/PostController.php
+```
+`use Illuminate\View\View` 行と create メソッドの return に `view('post.create')` 記述しておく。
+```php
+use Illuminate\View\View;
+
+public function create()
+{
+    return view('post.create');
+}
+```
+フォームページの設定をルートに記述する
+```bash
+vim routes/web.php
+```
+```php
+Route::middleware('auth')->group(function () {
+    Route::get('/post/create', [PostController::class, 'create']);
+});
+```
+ここまで、記述したら `http://127.0.0.1:8000/post/create` にアクセスしてフォームが表示されるか確認する
