@@ -5,7 +5,7 @@
 Laravel 10 で動作する PHP のバージョンは 8.1 以上で
 動作しますのでご注意下さい。
 
-## インストール方法
+## インストールについて
 Laravel のインストールについては、プロジェクトを作成時に
 関連ファイルが配置されますので、プログラム毎に違うバージョンを
 使用する事が出来ますので、プロジェクトの作成時にバージョンを指定しない場合は
@@ -26,6 +26,44 @@ php artisan -V
 ```bash
 Laravel Framework 10.9.0
 ```
+### 設定とメッセージの日本語化
+- `timezone` タイムゾーン
+- `locale` 表示に使用する言語
+- `faker_locale` テスト用ダミーデータ言語
+
+```bash
+vim config/app.php
+```
+```php
+'timezone' => 'Asia/Tokyo',
+'locale' => 'ja',
+'faker_locale' => 'ja_JP',
+```
+翻訳ファイルの配置
+以下のコマンドを実行すると、翻訳用ファイルが配置されます。
+`lang/en/*.php`
+```bash
+php artisan lang:publish
+```
+日本語ファイル配置
+以下のコマンドを実行すると、翻訳用ファイルが配置されます。
+`lang/ja/*.php` `lang/ja.json`
+```bash
+composer require askdkc/breezejp --dev
+php artisan breezejp
+```
+### 開発環境と本番環境を切替
+開発環境と本番環境で変わる可能性がある情報を**環境変数**に保存します。
+環境変数は、プロジェクトフォルダ内の `.env` ファイルで一括管理されます。
+
+例えば、開発環境では環境変数 APP_ENV に dev を設定して
+本番環境では環境変数 APP_ENV に production と設定して
+プログラムにて 環境変数を参照して動作を変える事ができます。
+使用例として、`config/app.php` 内に以下の様に記述しています。
+```php
+'env' => env('APP_ENV', 'production');
+```
+これは .env ファイルの APP_ENV に値が無い場合は production として設定している処理になります。
 
 ### 開発サーバーの起動
 `php artisan serve` コマンドを実行すると開発サーバが起動します。
