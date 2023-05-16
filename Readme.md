@@ -1031,3 +1031,40 @@ vim database/seeders/DatabaseSeeder.php
 php artisan db:seed
 ```
 ファクトリーは大量にデータを作る時に役に立ちます。
+
+### ページネーション
+ページネーションとは、ページ内容分割機能の事になります。
+Laravelでは手軽にページネーションを実装出来ます。
+
+コントローラーのモデル呼び出しを以下の様に変更して、ページネーションを実装します。
+```bash
+vim app/Http/Controller/PostController.php
+```
+`index` メソッドの以下の様に変更してみてください。
+`->paginate(1ページで読み込みレコード数)`
+```php
+    public function index()
+    {
+        return view('post.index', ['posts' => Post::with('user')->orderBy('created_at','desc')->paginate(2)]);
+    }
+```
+
+ビューにページネーションボタン表示を実装
+```bash
+vim resources/views/post/index.blade.php
+```
+以下の行を追記すると、ページネーションボタンがレンダリングされます。
+```php
+<div class="mt-4">{{$posts->links()}}</div>
+```
+
+ページネーションボタンのカスタマイズしたい場合は、以下のコマンドを実行します。
+```bash
+php artisan vendor:publish --tag=laravel-pagination
+```
+コマンド実行により、vendor ディレクトリ内のページネーション用ビューファイルを 
+`resources/views/vendor/pagination/tailwind.blade.php` にコピーして編集する事のよって、ページネーションボタンをカスタマイズ出来ます。
+
+カスタマイズするにあたり、tailwindcss を使用しているので css のコンパイルする必要があります。
+開発中は `npm run dev` を実行してリアルタイムコンパイルをして、
+公開時は `npm run build` を実行して `public/build` に静的ファイルとしてコンパイルをします。
