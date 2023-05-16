@@ -940,3 +940,94 @@ vim resources/views/post/index.blade.php
 
 上記の問題を解決するには、投稿データを取得する際に、一緒にユーザーデータもまとめて取得します。
 `Post::with('user')->get()` と記述する事で1回でデータを取得できます。
+
+## テストデータ作成
+開発中のテストデータを効率的に作る機能として、Seeder 機能があります。
+データーベーステーブルにひとつずつダミーデータを登録する場合に使用します。
+
+今回は、posts テーブルにダミーデータを登録する為に、シーダーファイルを作成していきます。
+シーダーファイルはコマンド `php artisan make:seeder ファイル名` で作成出来ます。
+```bash
+php artisan make:seeder PostSeeder
+```
+シーダーファイルは、`database/seeders` ディレクトリーに作成させます。
+
+作成した、シーダーファイルを変更してダミーデータを作成してみます。
+```bash
+vim database/seeders/PostSeeder.php
+```
+```php
+public function run(): void
+{
+    \App\Models\Post::create([
+        'title' => 'テスト',
+        'body' => 'シーダーのテスト',
+        'user_id' => 1,
+    ]);
+}
+```
+シーダー作成コマンドを実行
+```bash
+php artisan db:seed --class=PostSeeder
+```
+
+上記の手順でダミーデータを登録は出来るのですが、大量のダミーデータを作成する場合は
+面倒なので、そういう時は、**Factory** を使用してダミーデータを登録します。
+
+ファクトリファイルはコマンド `php artisan make:factory モデル名Factory` で作成出来ます。
+```bash
+php artisan make:factory PostFactory
+```
+ファクトリファイルは、`database/factories` ディレクトリーに作成させます。
+```bash
+vim database/factories/PostFactory.php
+```
+ダミーデータのデータ型は `fake()->` 後に指定します。
+`text` と指定すると、文字列のダミーデータを作成します。
+```php
+    public function definition(): array
+    {
+        return [
+            'title'=>fake()->text(20),
+            'body'=>fake()->realText(200),
+            'user_id'=>\App\Models\User::factory(),
+        ];
+    }
+```
+
+#### factory データ型
+| データタイプ                      | 入れるデータ         | ダミーデータ例                                               |
+| :-------------------------------- | :------------------- | :----------------------------------------------------------- |
+| address                           | 住所                 | 5320011 大阪府大阪市淀川区西中島 3-21                        |
+| name                              | 名前                 | 山田 太郎                                                    |
+| email                             | メールアドレス       | yamada@example.com                                           |
+| randomDigit                       | ランダムな数字       | 8                                                            |
+| numberBetween($min=100,$max=1000) | 指定した範囲内の数値 | 234                                                          |
+| text                              | テキスト             | Qui quisquam temporibus sunt fugit.                          |
+| realText                          | 日本語対応テキスト   | 日本語では宮沢賢治薯「銀河鉄道の夜」より文章が生成されます。 |
+ダミーデータは日本語を作成することも出来ます。
+`config/app.php` ファイル内の `faker_locale` を `ja_JP` と設定すると日本語で使用出来ます。
+
+factory を実行するには、`database/seeders/DatabaseSeeder.php` ファイルに以下の様に追記していきます。
+```bash
+vim database/seeders/DatabaseSeeder.php
+```
+`run` メソッドに記述してある元からある行はコメントしておきます。
+`\App\Models\Post::factory(10)->create();` ダミーデータを10件作成するように記述しました。
+```php
+    public function run(): void
+    {
+        // \App\Models\User::factory(10)->create();
+
+        // \App\Models\User::factory()->create([
+        //     'name' => 'Test User',
+        //     'email' => 'test@example.com',
+        // ]);
+        \App\Models\Post::factory(10)->create();
+    }
+```
+シーダーコマンドを実行して、ファクトリを実行します。
+```bash
+php artisan db:seed
+```
+ファクトリーは大量にデータを作る時に役に立ちます。
