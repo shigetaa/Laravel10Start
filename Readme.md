@@ -577,7 +577,7 @@ vim resources/views/post/create.blade.php
         </h2>
     </x-slot>
 
-    <div class="mt-8">
+    <div class="py-12">
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <form>
             <div class="w-full flex flex-col">
@@ -623,3 +623,320 @@ Route::middleware('auth')->group(function () {
 });
 ```
 ここまで、記述したら `http://127.0.0.1:8000/post/create` にアクセスしてフォームが表示されるか確認する
+
+### 入力データ処理
+まずは、フォーム入力した情報の保存ルート設定を追記します。
+```bash
+vim routes/web.php
+```
+```php
+Route::middleware('auth')->group(function () {
+    Route::get('/post/create', [PostController::class, 'create']);
+    Route::post('/post/create', [PostController::class, 'store'])->name('post.store');
+});
+```
+先程のフォーム入力ページのルート設定と違い `->name('post.store');` を追記してルート設定に名前を付けてます。
+ルート設定名を付けることにより、次の作業、ビュー画面からルート設定名にてURLを参照出来る様になります。
+```bash
+vim resources/views/post/create.blade.php
+```
+`<form>` 部分を以下の様に変更します。
+`@csrf` 部分はLaravel でフォーム画面には必ず必要な処理になりますので追記しておきます。
+```php
+        <form method="post" action="{{route('post.store')}}">
+            @csrf
+            ....省略....
+        </form>
+```
+入力情報の検証処理
+フォームからのリクエストを処理するクラスを作成して、入力情報の検証をしていきます。
+```bash
+php artisan make:request PostRequest
+```
+```bash
+vim app/Http/Requests/PostRequest.php
+```
+```php
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class PostRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'title' => 'required|max:20',
+            'body' => 'required|max:400'
+        ];
+    }
+    public function messages()
+    {
+        return [
+            'title.required' => '件名は必ず入力してください',
+            'title.max' => '件名は最大20文字以内で入力してください',
+            'body.required' => '本文は必ず入力してください',
+            'body.max' => '本文は最大400文字以内で入力してください'
+        ];
+    }
+}
+
+```
+ビューに入力情報を渡す
+```bash
+vim resources/views/post/create.blade.php
+```
+`@error('')` @error ディレクティブ バリデーションエラーメッセージが存在するかを判断します。
+`old('')` フォーム入力値を保持しています。
+```php
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            投稿フォーム
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <form method="post" action="{{route('post.store')}}">
+            @csrf
+            <div class="w-full flex flex-col">
+                <label for="title" class="font-semibold mt-4">件名</label>
+                @error('title')
+                <li class="mt-2">{{ $message }}</li>
+                @enderror
+                <input type="text" name="title" class="w-auto py-2 border border-gray-300 rounded-md" id="title" value="{{old('title')}}">
+            </div>
+            <div class="w-full flex flex-col">
+                <label for="body" class="font-semibold mt-4">本文</label>
+                @error('body')
+                <li class="mt-2">{{ $message }}</li>
+                @enderror
+                <textarea name="body" id="body" cols="30" rows="50" class="w-auto py-2 border border-gray-300 rounded-md">{{old('body')}}</textarea>
+            </div>
+            <x-primary-button class="mt-4">送信する</x-primary-button>
+        </form>
+    </div>
+    </div>
+    
+</x-app-layout>
+```
+入力情報を検証して、保存して、リダイレクトをする
+```bash
+vim app/Http/Controller/PostController.php
+```
+`use App\Http\Requests\PostRequest;` 先頭行に追記
+`store` メソッド引数を `PostRequest $request` としてフォームリクエストを受け取る
+`Post::create($validated);` でバリデーションした情報を保存
+`return redirect('/post')` 正常に処理が終わったらリダイレクトする
+`->withInput();` 検証異常時は、元のページに戻って、入力情報を付与してリダイレクトする。
+```php
+use App\Http\Requests\PostRequest;
+
+    public function store(PostRequest $request)
+    {
+        $validated = $request->validated();
+        $post = Post::create($validated);
+        return redirect('/post')
+        ->withInput();
+    }
+```
+### 一覧表示
+一覧表示ページ情報のルート設定を追記します。
+```bash
+vim routes/web.php
+```
+```php
+Route::middleware('auth')->group(function () {
+    Route::get('/post', [PostController::class, 'index']);
+    Route::get('/post/create', [PostController::class, 'create']);
+    Route::post('/post/create', [PostController::class, 'store'])->name('post.store');
+});
+```
+一覧表示ページのビューを作成します。
+```bash
+vim resources/views/post/index.blade.php
+```
+```php
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            投稿一覧
+        </h2>
+    </x-slot>
+
+    <div class="px-6 max-w-7xl mx-auto sm:px-6 lg:px-8">
+    <x-primary-button class="mt-4" onclick="location.href='/post/create'">新規投稿</x-primary-button>
+        @foreach($posts as $post)
+        <div class="mt-4 p-8 bg-white w-full rounded-2xl">
+            <h1 class="p-4 text-lg font-semibold">{{$post->title}}</h1>
+            <hr class="w-full">
+            <p class="mt-4 p-4">{{$post->body}}</p>
+            <div class="p-4 text-sm font-semibold">{{$post->created_at}}</div>
+        </div>
+        @endforeach
+    </div>
+    
+</x-app-layout>
+```
+一覧表示ページのコントローラーの設定を追記します。
+```bash
+vim app/Http/Controller/PostController.php
+```
+```php
+    public function index()
+    {
+        return view('post.index', ['posts' => Post::all()]);
+    }
+```
+
+### リレーション
+リレーションとは、モデル同士の間にリレーションを設定することで、データベーステーブルを関連づけられる様になります。
+
+今回は、投稿したユーザーの名前を表示させるには、Post モデルと User モデルにリレーションを設定します。
+
+```mermaid
+erDiagram
+
+users ||--o{ posts: "1:n"
+
+users {
+  integer id
+  string name
+  string email
+}
+
+posts {
+  integer id
+  string title
+  text body
+  integer user_id
+}
+```
+１対多リレーションでは、１側のモデルを親モデル、多側のモデルを子モデルと呼びます。
+子モデルのテーブルには、親モデルの **id** 情報を格納したカラムを入れる様にします。
+カラム名は、親モデル名に **_id** と言う接尾辞を付けます。
+
+posts テーブルの中に、**user_id** カラムを追加します。
+user_id カラムには post が紐づく user の id を入れていきます。
+
+すでに作成済みの posts テーブルに user_id カラムを追加するには、新たにマイグレーションファイルを作成して、マイグレーションを実行してカラムを追加作業を実施します。
+
+`php artisan make:migration ファイル名 --table=テーブル名`
+```bash
+php artisan make:migration add_user_id_column_to_posts_table --table=posts
+vim database/migrations/****_add_user_id_column_to_posts_table.php
+```
+既存の posts テーブルにデータがある場合は、*Cannot add a NOT NULL* エラーが発生すると思うのでのその際は、`$table->foreignId('user_id')->default('1');`でとりあえず対応した
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('posts', function (Blueprint $table) {
+            $table->foreignId('user_id');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('posts', function (Blueprint $table) {
+            $table->dropColumn('user_id');
+        });
+    }
+};
+```
+マイグレーションを実行
+```bash
+php artisan migrate
+```
+投稿時に、ユーザーの id を入れる処理を追記していきます。
+```bash
+vim app/Http/Controller/PostController.php
+```
+```php
+    public function store(PostRequest $request)
+    {
+        //$post = Post::create($request->safe()->only(['title','body']));
+        $data = $request->safe()->only(['title','body']);
+        $data['user_id'] = auth()->id();
+        $post = Post::create($data);
+        return redirect('/post')
+        ->withInput();
+    }
+```
+モデルの更新許可カラム`fillable` に `user_id` を追記しておきます。
+```bash
+vim app/Models/Post.php
+```
+```php
+    protected $fillable = [
+        'title',
+        'body',
+        'user_id'
+    ];
+```
+
+モデルにリレーションの設定
+
+親モデル `User` に子モデル `Post` を参照する処理を追記します。
+```bash
+vim app/Models/User.php
+```
+```php
+    public function posts() {
+        return $this->hasMany(Post::class);
+    }
+```
+
+子モデル `Post` に親モデル `User` を参照する処理を追記します。
+```bash
+vim app/Models/Post.php
+```
+```php
+    public function user() {
+        return $this->belongsTo(User::class);
+    }
+```
+
+リレーションを利用して、親モデル `User` 情報を参照してビューに表示する
+```bash
+vim resources/views/post/index.blade.php
+```
+以下の様に変更して、User の name を参照して表示、name カラムが null の際は ?? で　匿名 と表示している。
+```php
+<div class="p-4 text-sm font-semibold">{{$post->created_at}} / {{$post->user->name??'匿名'}}</div>
+```
+
+リレーション先のデータ取得をEager ロードで取得
+`Post::all()` で投稿データを取得した後に、ビュー側で `$post->user->name` で記述してますが、例えば投稿データが100件ある場合、ユーザーデーターを毎回100回SQLの接続をしているので処理的に遅くなりがちです。
+
+上記の問題を解決するには、投稿データを取得する際に、一緒にユーザーデータもまとめて取得します。
+`Post::with('user')->get()` と記述する事で1回でデータを取得できます。
