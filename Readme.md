@@ -598,7 +598,7 @@ vim resources/views/post/create.blade.php
 ### コントローラー作成
 投稿アプリを制御するコントローラーを作成します。
 ```bash
-php artisan make:controller PostController -m Post
+php artisan make:controller PostController --model Post
 ```
 ビューファイルのコードを記述
 ```bash
@@ -941,7 +941,7 @@ vim resources/views/post/index.blade.php
 上記の問題を解決するには、投稿データを取得する際に、一緒にユーザーデータもまとめて取得します。
 `Post::with('user')->get()` と記述する事で1回でデータを取得できます。
 
-## テストデータ作成
+### テストデータ作成
 開発中のテストデータを効率的に作る機能として、Seeder 機能があります。
 データーベーステーブルにひとつずつダミーデータを登録する場合に使用します。
 
@@ -1068,3 +1068,338 @@ php artisan vendor:publish --tag=laravel-pagination
 カスタマイズするにあたり、tailwindcss を使用しているので css のコンパイルする必要があります。
 開発中は `npm run dev` を実行してリアルタイムコンパイルをして、
 公開時は `npm run build` を実行して `public/build` に静的ファイルとしてコンパイルをします。
+
+### CRUD
+WEBアプリでは、データの作成や編集に関する一連の処理を **CRUD** と言います。
+- Create (作成)
+- Read (読み込み)
+- Update (更新)
+- Delete (削除)
+
+CRUD処理を実装する際、コントローラーに 7つのメソッド を使用するのが一般的です。
+| CRUD   | Controller Method | Form Method | Route         | 機能                           |
+| :----- | :---------------- | :---------- | :------------ | :----------------------------- |
+| Read   | index             | Get         | xxx           | データの一覧表示               |
+| Create | create            | Get         | xxx/create    | 新規データ登録フォームの表示   |
+| Create | store             | Post        | xxx           | データの新規保存               |
+| Read   | show              | Get         | xxx/{id}      | データの個別表示               |
+| Update | edit              | Get         | xxx/{id}/edit | データの個別編集フォームの表示 |
+| Update | update            | Put,Patch   | xxx/{id}      | データの個別更新               |
+| Delete | destroy           | Delete      | xxx/{id}      | データの個別削除               |
+
+通常、コントローラーを作成して、メソッドを記述して行くのですが
+CRUD 関連のメソッドをまとめて作成する事が出来る、**リソースコントローラー** をコマンドで作成する方法もあります。
+
+`--resource` オプションを付与するだけです。
+```bash
+php artisan make:controller PostController --resource --model=Post
+```
+Routeの設定も以下の様に記述すると自動で、CRUD関連メソッドに振り分けて処理します。
+```php
+Route::resource('post', PostController::class);
+```
+
+今回は、リソースコントローラーをコマンドで作成せず、すでに作成したコントローラーを使用して追加記述して、CRUD を実装して行きます。
+
+#### 個別表示
+まずは、個別表示用のルート設定を追記します。
+```bash
+vim routes/web.php
+```
+個別表示をする為に、`{post}`部分には post の id 情報を入れて渡すようにします。
+```php
+Route::get('/post/{post}', [PostController::class, 'show'])->name('post.show');
+```
+コントローラに処理を追記します。
+```bash
+vim app/Http/Controller/PostController.php
+```
+引数の `Post $post` はタイプヒントと呼ばれ、引数の型を指定している部分です。
+Laravel では タイプヒントで引数を指定するとモデルからidとなるデータを自動で取得してくれます。
+これを、依存注入(DI) と言います。
+```php
+    public function show(Post $post)
+    {
+        return view('post.show', compact('post'));
+    }
+```
+依存注入をしない場合の処理は以下と様に記述します。
+```php
+    public function show($id)
+    {
+        $post = Post::find($id);
+        return view('post.show', compact('post'));
+    }
+```
+個別表示用のビューファイルを作成
+```bash
+vim resources/views/post/show.blade.php
+```
+```php
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            個別表示
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="bg-white w-full rounded-2xl">
+        <div class="mt-4 p-4">
+            <h1 class="text-lg font-semibold">{{ $post->title }}</h1>
+            <hr class="w-full">
+            <p class="mt-4 whitespace-pre-line">{{ $post->body }}</p>
+            <div class="text-sm font-semibold flex flex-row-reverse">
+                <p>{{ $post->created_at }}</p>
+            </div>
+        </div>
+        </div>
+    </div>
+    </div>
+    
+</x-app-layout>
+```
+一覧表示用のビューファイルに、個別表示リンクを追記
+```bash
+vim resources/views/post/index.blade.php
+```
+件名（タイトル）部分にリンクを、ルートで設定した名前で設定し、`$post` を引数で渡す。
+```php
+<h1 class="p-4 text-lg font-semibold">件名: <a href="{{route('post.show',$post)}}" class="text-blue-600">{{$post->title}}</a></h1>
+```
+#### 個別編集
+```bash
+vim routes/web.php
+```
+```php
+Route::get('/post/{post}/edit', [PostController::class, 'edit'])->name('post.edit');
+Route::put('/post/{post}', [PostController::class, 'update'])->name('post.update');
+```
+コントローラに処理を追記します。
+```bash
+vim app/Http/Controller/PostController.php
+```
+```php
+    public function edit(Post $post)
+    {
+        return view('post.edit', compact('post'));
+    }
+
+    public function update(PostRequest $request, Post $post)
+    {
+        $data = $request->safe()->only(['title','body']);
+        $data['user_id'] = auth()->id();
+        $post->update($data);
+        return redirect()
+        ->route('post.show',$post)
+        ->withInput();
+    }
+```
+個別編集フォーム用のビューファイルを作成
+```bash
+vim resources/views/post/edit.blade.php
+```
+新規データ登録フォーム `create.blade.php` をコピーして `edit.blade.php` 作成
+追記点 `@method('put')` `{{route('post.update', $post)}}` `{{old('title', $post->title)}}` `{{old('body', $post->body)}}`
+```php
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            投稿フォーム
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <form method="post" action="{{route('post.update', $post)}}">
+            @csrf
+            @method('put')
+            <div class="w-full flex flex-col">
+                <label for="title" class="font-semibold mt-4">件名</label>
+                @error('title')
+                <li class="mt-2">{{ $message }}</li>
+                @enderror
+                <input type="text" name="title" class="w-auto py-2 border border-gray-300 rounded-md" id="title" value="{{old('title', $post->title)}}">
+            </div>
+            <div class="w-full flex flex-col">
+                <label for="body" class="font-semibold mt-4">本文</label>
+                @error('body')
+                <li class="mt-2">{{ $message }}</li>
+                @enderror
+                <textarea name="body" id="body" cols="30" rows="50" class="w-auto py-2 border border-gray-300 rounded-md">{{old('body', $post->body)}}</textarea>
+            </div>
+            <x-primary-button class="mt-4">送信する</x-primary-button>
+        </form>
+    </div>
+    </div>
+    
+</x-app-layout>
+```
+個別表示用のビューファイルに、個別編集フォーム表示のリンクを追記
+```bash
+vim resources/views/post/show.blade.php
+```
+件名（タイトル）タグ下部分にリンクボタンを、ルートで設定した名前で設定し、`$post` を引数で渡す。
+```php
+<h1 class="text-lg font-semibold">{{ $post->title }}</h1>
+<div class="text-right p-4">
+  <a href="{{route('post.edit',$post)}}"><x-primary-button>編集</x-primary-button></a>
+</div>
+```
+#### 個別削除
+```bash
+vim routes/web.php
+```
+```php
+Route::delete('/post/{post}', [PostController::class, 'destroy'])->name('post.destroy');
+```
+コントローラに処理を追記します。
+```bash
+vim app/Http/Controller/PostController.php
+```
+```php
+    public function destroy(Post $post)
+    {
+        $post->delete();
+        return redirect()
+        ->route('post.index')
+        ->with('message', '削除しました');
+    }
+```
+個別表示用のビューファイルに、個別削除用のリンクを追記
+```bash
+vim resources/views/post/show.blade.php
+```
+```php
+            <div class="text-right p-4 flex">
+                <a class="flex-1" href="{{route('post.edit',$post)}}"><x-primary-button>編集</x-primary-button></a>
+                <form class="flex-2" action="{{route('post.destroy', $post)}}" method="post">
+                    @csrf
+                    @method('delete')
+                    <x-primary-button class="bg-red-700 ml-2">削除</x-primary-button>
+                </form>
+            </div>
+```
+セッションを使用して削除後の `redirect`後の一覧ページにて メッセージを表示
+```bash
+vim resources/views/post/index.blade.php
+```
+```php
+    @if(session('message'))
+    <div class="mt-4">
+        <div class="flex rounded-md bg-green-50 p-4 text-sm text-green-500" x-cloak x-show="showAlert" x-data="{ showAlert: true }">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="mr-3 h-5 w-5 flex-shrink-0">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+            </svg>
+            <div><b>{{session('message')}}</b></div>
+            <button class="ml-auto" x-on:click="showAlert = false">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+    @endif
+```
+
+### コンポーネント
+コンポーネントとは、プロジェクト内で共通して使用する部品を構成するファイル群です。
+
+Laravel Breeze をインストールした時点で、`resources/views/components` ディレクトリに構成ファイルが保存されています。
+
+今回は、前項で作成した個別データ削除後の、一覧ページで表示される、メッセージ表示部分をコンポーネント化して行きます。
+```bash
+php artisan make:component AlertMessage
+```
+コンポーネントを作成すると、以下の2か所にファイルが作成されます。
+`resources/views/components` `app/View/Components`
+```bash
+vim app/View/Components/AlertMessage.php
+```
+コンポーネントの属性 `type` に 値を渡すと、表示バターンが変わる仕様にしました。
+`info` `success` `warning` `error` の 4種類になります。初期値は `info` になります。
+```php
+<?php
+
+namespace App\View\Components;
+
+use Closure;
+use Illuminate\Contracts\View\View;
+use Illuminate\View\Component;
+
+class AlertMessage extends Component
+{
+    public $type;
+    /**
+     * @param string $type = info | success | warning | error
+     */
+    public function __construct($type='info')
+    {
+        $this->type = strtolower($type);
+    }
+
+    /**
+     * Get the view / contents that represent the component.
+     */
+    public function render(): View|Closure|string
+    {
+        return view('components.alert-message');
+    }
+}
+```
+コンポーネントビューファイルの作成
+```bash
+vim resources/views/components/alert-message.blade.php
+```
+コンポーネントに渡す内容 `slot` がない場合は表示をしない仕様になります。
+```php
+@if(!empty(strip_tags($slot)))
+<div {{ $attributes }}>
+@switch($type)
+@case('success')
+<div class="flex rounded-md bg-green-50 p-4 text-sm text-green-500" x-cloak x-show="showAlert" x-data="{ showAlert: true }">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="mr-3 h-5 w-5 flex-shrink-0">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+    </svg>
+@break
+@case('warning')
+<div class="flex rounded-md bg-yellow-50 p-4 text-sm text-yellow-500" x-cloak x-show="showAlert" x-data="{ showAlert: true }">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="mr-3 h-5 w-5 flex-shrink-0">
+      <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+    </svg>
+@break
+@case('error')
+<div class="flex rounded-md bg-red-50 p-4 text-sm text-red-500" x-cloak x-show="showAlert" x-data="{ showAlert: true }">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="mr-3 h-5 w-5 flex-shrink-0">
+      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+    </svg>
+@break
+@default
+<div class="flex rounded-md bg-primary-50 p-4 text-sm text-primary-500" x-cloak x-show="showAlert" x-data="{ showAlert: true }">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="mr-3 h-5 w-5 flex-shrink-0">
+      <path fill-rule="evenodd" d="M19 10.5a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0zM8.25 9.75A.75.75 0 019 9h.253a1.75 1.75 0 011.709 2.13l-.46 2.066a.25.25 0 00.245.304H11a.75.75 0 010 1.5h-.253a1.75 1.75 0 01-1.709-2.13l.46-2.066a.25.25 0 00-.245-.304H9a.75.75 0 01-.75-.75zM10 7a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+    </svg>
+@endswitch
+<div>{{$slot}}</div>
+<button class="ml-auto" x-on:click="showAlert = false">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5">
+<path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+</svg>
+</button>
+</div>
+</div>
+@endif
+```
+
+前項で作成した個別データ削除後の、一覧ページで表示される、メッセージ表示部分を、コンポーネントに置換て実装してみます。
+```bash
+vim resources/views/post/index.blade.php
+```
+`class="mt-4"` 部分はcssのスタイルになります、無くても動作します。
+```php
+<x-alert-message class="mt-4" type="success"><b>{{session('message')}}</b></x-alert-message>
+```
+エラーが表示される場合は、`php artisan view:clear` を実行してみてください。
+CSSが適用されない場合は、`npm run dev` を実行してみて下さい。
+
