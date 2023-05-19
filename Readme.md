@@ -1403,3 +1403,28 @@ vim resources/views/post/index.blade.php
 エラーが表示される場合は、`php artisan view:clear` を実行してみてください。
 CSSが適用されない場合は、`npm run dev` を実行してみて下さい。
 
+### まとめ
+今回の学習で構築した要素は
+1. プロジェクト作成
+2. 認証機能の実装
+3. ルーティング処理
+4. モデル作成
+5. マイグレーション使用方法
+6. Seeder and factorie 使用方法
+7. CURD 構築
+8. コンポーネント作成
+
+課題、
+1. 画像アップロード保存
+2. REST API 構築
+3. オブジェクトストレージ使用方法
+4. キューとジョブ処理
+5. イベントとリスナー処理
+6. ブロードキャスト処理
+
+
+参考サイト
+- [Sailbat UI](https://sailboatui.com/)
+- [Laravel Doc](https://readouble.com/laravel/10.x/ja/starter-kits.html)
+- [Laravel 学習](https://reffect.co.jp/laravel)
+- [PlanetScale](https://planetscale.com/)
