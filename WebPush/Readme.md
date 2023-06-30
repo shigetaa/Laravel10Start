@@ -3,7 +3,7 @@ WebPush機能を実装する。
 ## 使用環境
 - Laravel
 - React
-- Httpsサーバー (自己証明書不可)
+- [Httpsサーバー](../HttpsProxy/Readme.md) (自己証明書不可)
 - [laravel-notification-channels/webpush](https://github.com/laravel-notification-channels/webpush)
 
 ## 手順
@@ -27,12 +27,12 @@ vim config/app.php
 
 Userモデルに `HasPushSubscriptions` トレイトを追加し、プッシュ通知を送れるようにします。
 ```bash
-vim app/Http/Controllers/UsersController.php
+vim app/Models/User.php
 ```
 ```php
 use NotificationChannels\WebPush\HasPushSubscriptions;
 
-class User extends Model
+class User extends Authenticatable
 {
     use HasPushSubscriptions;
 }
@@ -85,6 +85,255 @@ php artisan vendor:publish --provider="NotificationChannels\WebPush\WebPushServi
 ```
 
 ### Laravel側の実装
+#### Notificationの登録
+Web Push用のNotificationクラスを実装していきます。 下記コマンドで `app/Notifications/webPushEvent.php` というファイルが作成されます。
+```bash
+php artisan make:notification webPushEvent
+```
+```bash
+vim app/Notifications/webPushEvent.php
+```
+```php
+<?php
+
+namespace App\Notifications;
+
+use Illuminate\Notifications\Notification;
+use NotificationChannels\WebPush\WebPushChannel;
+use NotificationChannels\WebPush\WebPushMessage;
+
+class webPushEvent extends Notification
+{
+    public function via($notifiable)
+    {
+        return [WebPushChannel::class];
+    }
+
+    public function toWebPush($notifiable, $notification)
+    {
+        return (new WebPushMessage)
+            ->title('新イベント')
+            ->body('新しいイベントが追加されました！');
+    }
+}
+```
+#### Controllerの作成
+```bash
+php artisan make:controller WebPushController
+```
+```bash
+vim app/Http/Controllers/WebPushController.php
+```
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+class WebPushController extends Controller
+{
+    public function __construct() {
+        $this->middleware('auth');// 要ログイン
+    }
+    public function create() {
+        return view('web_push.create');
+    }
+    public function store(Request $request) {
+        $this->validate($request, [
+            'endpoint'    => 'required',
+            'keys.auth'   => 'required',
+            'keys.p256dh' => 'required'
+        ]);
+        $endpoint = $request->endpoint;
+        $token = $request->keys['auth'];
+        $key = $request->keys['p256dh'];
+        $user = $request->user();
+        $user->updatePushSubscription($endpoint, $key, $token);
+        return response()->json([
+            'success' => true
+        ], 200);
+    }
+}
+```
+なお、この中で重要なのは`$this->middleware('auth');`の部分です。
+
+意味としては「このコントローラーにアクセスする場合、ログインが必須」となりますが、これは`store()`の中で特定のユーザーを取得する必要があるためです。
+#### Viewの作成
+プッシュ通知を登録するページのビュー（HTML+JavaScript）を作っていきます。
+```bash
+vim resources/views/web_push/create.blade.php
+```
+```php
+<html>
+<body>
+    <div id="app">
+        <div v-if="processing">処理中...</div>
+        <div v-else>
+            <button type="button" @click="subscribe" v-if="!isSubscribed">イベントのプッシュ通知を登録する</button>
+            <button type="button" @click="unsubscribe" v-else>イベントのプッシュ通知を解除する</button>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    <script>
+
+        new Vue({
+            el: '#app',
+            data: {
+                vapidPublicKey: '{{ config('webpush.vapid.public_key') }}',
+                registration: null,
+                isSubscribed: false,
+                processing: false,
+                csrfToken: '{{ csrf_token() }}'
+            },
+            methods: {
+                subscribe() {   // プッシュ通知を許可する
+                    this.processing = true;
+                    const applicationServerKey = this.base64toUint8(this.vapidPublicKey);
+                    const options = {
+                        userVisibleOnly: true,
+                        applicationServerKey: applicationServerKey
+                    };
+                    this.registration.pushManager.subscribe(options)
+                        .then(subscription => {
+
+                            // Laravel側へデータを送信
+                            fetch('/web_push', {
+                                method: 'POST',
+                                body: JSON.stringify(subscription),
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': this.csrfToken
+                                }
+                            })
+                            .then(response => {
+                                this.isSubscribed = true;
+                                alert('プッシュ通知が登録されました');
+                            })
+                            .catch(error => {
+                                console.log(error);
+                            });
+                        })
+                        .finally(() => {
+                            this.processing = false;
+                        });
+                },
+                unsubscribe() { // プッシュ通知を解除する
+                    this.processing = true;
+                    this.registration.pushManager.getSubscription()
+                        .then(subscription => {
+                            subscription.unsubscribe()
+                                .then(result => {
+                                    if(result) {
+                                        this.isSubscribed = false;
+                                        alert('プッシュ通知が解除されました');
+                                    }
+                                });
+                        })
+                        .finally(() => {
+                            this.processing = false;
+                        });
+                },
+                base64toUint8(str) {
+                    str += '='.repeat((4 - str.length % 4) % 4);
+                    const base64 = str
+                        .replace(new RegExp('\-', 'g'), '+')
+                        .replace(new RegExp('_', 'g'), '/');
+                    const binary = window.atob(base64);
+                    const binaryLength = binary.length;
+                    let uint8Array = new Uint8Array(binaryLength);
+                    for(let i = 0; i < binaryLength; i++) {
+                        uint8Array[i] = binary.charCodeAt(i);
+                    }
+                    return uint8Array.buffer;
+                }
+            },
+            mounted() {
+                if('serviceWorker' in navigator && 'PushManager' in window) {
+                    // Service Workerをブラウザにインストールする
+                    navigator.serviceWorker.register('/sw.js')
+                        .then(registration => {
+                            console.log('Service Worker が登録されました。');
+                            this.registration = registration;
+                            this.registration.pushManager.getSubscription()
+                                .then(subscription => {
+                                    this.isSubscribed = !(subscription === null);
+                                });
+                        });
+                } else {
+                    console.log('このブラウザは、プッシュ通知をサポートしていません。');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+```
+この中で重要なのは以下の３つの部分です。
+<details><summary>1. Service Workerを登録する</summary>
+
+プッシュ通知を実装するには、まず `Service Worker` と呼ばれる `JavaScript` をブラウザに登録（インストール）しておいて、プッシュ通知されたり、プッシュ通知がクリックされたときにこのコードが実行されることになります。（Service Workerの本体コードは次の項目で作成します）
+
+そのため、ページが表示された時点で呼ばれる `init()` の中で実行しています。
+</details>
+<details><summary>2. プッシュ通知を許可する</summary>
+
+**「イベントのプッシュ通知を登録する」** ボタンがクリックされたときに呼ばれる `subscribe()` メソッド内でプッシュ通知が登録されることになります。
+
+この中では、`pushManager.subscribe()` を実行＆許可を得ることで、登録情報を取得し、これをLaravel側に 送信することになります。
+
+なお、送信先は、`WebPushController` の `store()`です。
+</details>
+<details><summary>3. プッシュ通知を解除する</summary>
+
+すでにプッシュ通知が許可されている場合に表示される **「イベントのプッシュ通知を解除する」** ボタンがクリックされたときに実行されるのが、`unsubscribe()` メソッドです
+</details>
+
+#### Service Workerの作成
+先ほどの項目で `Service Worker`を登録するコードを書きましたが、まだ `Service Worker`本体のファイルを作成していませんので、ここでつくりましょう。
+
+`public/sw.js` にファイルを作成し、中身を以下のようにしてください。
+```bash
+vim public/sw.js
+```
+```javascript
+// プッシュ通知された時
+self.addEventListener('push', e => {
+    const json = e.data.json();
+    const title = json.title;
+    const options = {
+        body: json.body,
+        data: {
+            url: json.data.url,
+        }
+    };
+    e.waitUntil(
+        self.registration.showNotification(title, options)
+    );
+});
+// 通知がクリックされた時
+self.addEventListener('notificationclick', e => {
+    const data = e.notification.data;
+    e.waitUntil(
+        clients.openWindow(data.url)
+    );
+});
+```
+#### Routesの登録
+ルーティングにも追加してください。
+```bash
+vim routes/web.php
+```
+```php
+Route::get('web_push/create', [WebPushController::class, 'create'])->name('web_push.create');
+Route::post('web_push', [WebPushController::class, 'store'])->name('web_push.store');
+```
+
+
+
+----
+
 #### サブスクリプションの保存/更新
 フロントから送られてくるエンドポイントと認証情報を登録する処理を実装します。
 ($keyと$tokenは、通知を暗号化するために使用されています。)
@@ -102,14 +351,6 @@ public function subscription(Request $request)
     $user->updatePushSubscription($endpoint, $key, $token);
     return ['result' => true];
 }
-```
-#### Routesの登録
-ルーティングにも追加してください。
-```bash
-vim routes/web.php
-```
-```php
-Route::post('/subscription', 'AppController@subscription')->name('subscription');
 ```
 
 #### Notificationの登録
@@ -137,8 +378,8 @@ class webPushEvent extends Notification
     public function toWebPush($notifiable, $notification)
     {
         return (new WebPushMessage)
-            ->title('This is title desu')
-            ->body('This is body desu');
+            ->title('新しいイベント')
+            ->body('新しいイベントが追加されました！');
     }
 }
 ```
@@ -321,3 +562,4 @@ Route::get('test', function(){
 
 参考サイト
 [Laravel + ReactでWebPush機能を実装](https://kudohayatoblog.com/blog/LaravelServiceWorker)
+[iOS Safari Web Push 検証](https://github.com/Neji-bit/pages/blob/main/index.html)
